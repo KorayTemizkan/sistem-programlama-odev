@@ -1,7 +1,6 @@
-// Ana mantık ve kodlar
-
 #include "tarsau.h"
 
+// Dosyanın ASCII olup olmadığını kontrol eder [cite: 12]
 int is_ascii(const char *filename)
 {
     FILE *f = fopen(filename, "r");
@@ -11,7 +10,6 @@ int is_ascii(const char *filename)
     int c;
     while ((c = fgetc(f)) != EOF)
     {
-        // ASCII karakterler 0-127 arasındadır
         if (c < 0 || c > 127)
         {
             fclose(f);
@@ -30,13 +28,14 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // --- BİRLEŞTİRME MODU (-b) --- [cite: 11]
     if (strcmp(argv[1], "-b") == 0)
     {
         char *output_name = "a.sau"; // Varsayılan isim [cite: 17]
         int file_count = 0;
-        char *input_files[32];
+        char *input_files[MAX_FILES];
+        long total_size = 0;
 
-        // Argümanları ayıkla (-o parametresini ve dosya listesini bul)
         for (int i = 2; i < argc; i++)
         {
             if (strcmp(argv[i], "-o") == 0)
@@ -46,43 +45,54 @@ int main(int argc, char *argv[])
             }
             else
             {
-                if (file_count < 32)
+                if (file_count < MAX_FILES)
                     input_files[file_count++] = argv[i];
             }
         }
 
-        // Kontroller
         if (file_count == 0)
         {
             printf("Hata: En az bir giriş dosyası belirtilmelidir!\n");
             return 1;
         }
 
-        // Dosyaları ASCII kontrolünden geçir ve header hazırla [cite: 14, 20]
-        char header[10000] = ""; // Başlık bilgisini biriktireceğimiz alan
+        char header[10000] = "";
         for (int i = 0; i < file_count; i++)
         {
+            // ASCII Kontrolü [cite: 20]
             if (!is_ascii(input_files[i]))
             {
                 printf("%s giriş dosyasının formatı uyumsuzdur!\n", input_files[i]);
-                return 0; // Program sorunsuz bir şekilde sonlandırılır
+                return 0;
             }
 
             struct stat st;
-            stat(input_files[i], &st);
+            if (stat(input_files[i], &st) != 0)
+                return 1;
 
-            // Format: |dosya_adı,izinler,boyut| [cite: 36]
+            // Toplam Boyut Kontrolü [cite: 18]
+            total_size += st.st_size;
+            if (total_size > MAX_TOTAL_SIZE)
+            {
+                printf("Hata: Giriş dosyalarının toplam boyutu 200 MB'ı geçemez!\n");
+                return 1;
+            }
+
+            // Header Kaydı Oluşturma [cite: 36]
             char entry[512];
-            sprintf(entry, "|%s,%04o,%ld|", input_files[i], st.st_mode & 0777, st.st_size);
+            sprintf(entry, "|%s,%04o,%ld|", input_files[i], (unsigned int)(st.st_mode & 0777), (long)st.st_size);
             strcat(header, entry);
         }
 
-        // Header boyutunu en başa 10 bayt olarak yaz [cite: 34]
         FILE *out = fopen(output_name, "w");
-        fprintf(out, "%010ld", strlen(header) + 10);
+        if (!out)
+            return 1;
+
+        // İlk 10 bayt header boyutu [cite: 34]
+        fprintf(out, "%010ld", (long)(strlen(header) + 10));
         fprintf(out, "%s", header);
 
-        // Dosya içeriklerini ekle [cite: 39]
+        // İçerikleri ekle [cite: 39]
         for (int i = 0; i < file_count; i++)
         {
             FILE *in = fopen(input_files[i], "r");
@@ -92,9 +102,10 @@ int main(int argc, char *argv[])
             fclose(in);
         }
         fclose(out);
-        printf("Dosyalar birleştirildi: %s\n", output_name);
+        printf("Dosyalar birleştirildi.\n");
     }
 
+    // --- AÇMA MODU (-a) --- [cite: 22]
     else if (strcmp(argv[1], "-a") == 0)
     {
         if (argc < 3)
@@ -104,16 +115,22 @@ int main(int argc, char *argv[])
         }
 
         char *archive_name = argv[2];
-        char *target_dir = (argc > 3) ? argv[3] : "."; // Dizin yoksa mevcut dizin [cite: 26]
+        char *target_dir = (argc > 3) ? argv[3] : ".";
+
+        // Uzantı Kontrolü [cite: 24]
+        if (strstr(archive_name, ".sau") == NULL)
+        {
+            printf("Arşiv dosyası uygunsuz veya bozuk!\n");
+            return 0;
+        }
 
         FILE *src = fopen(archive_name, "r");
         if (!src)
         {
-            printf("Arşiv dosyası uygunsuz veya bozuk!\n"); // [cite: 25]
+            printf("Arşiv dosyası uygunsuz veya bozuk!\n");
             return 0;
         }
 
-        // 1. Başlık boyutunu oku (İlk 10 bayt)
         char size_buf[11] = {0};
         if (fread(size_buf, 1, 10, src) < 10)
         {
@@ -123,18 +140,15 @@ int main(int argc, char *argv[])
         }
         long header_size = atol(size_buf);
 
-        // 2. Başlığı oku [cite: 33]
         char *header_data = malloc(header_size - 10 + 1);
         fread(header_data, 1, header_size - 10, src);
         header_data[header_size - 10] = '\0';
 
-        // Hedef dizin kontrolü ve oluşturma
         if (strcmp(target_dir, ".") != 0)
         {
             mkdir(target_dir, 0777);
         }
 
-        // 3. Dosyaları geri oluştur [cite: 32]
         char *token = strtok(header_data, "|");
         while (token != NULL)
         {
@@ -142,7 +156,6 @@ int main(int argc, char *argv[])
             unsigned int fmode;
             long fsize;
 
-            // Formatı parçala: isim, izin, boyut [cite: 36]
             if (sscanf(token, "%[^,],%o,%ld", fname, &fmode, &fsize) == 3)
             {
                 char path[512];
@@ -151,7 +164,6 @@ int main(int argc, char *argv[])
                 FILE *dest = fopen(path, "w");
                 if (dest)
                 {
-                    // Dosya içeriğini ASCII formatında oku ve yaz [cite: 39]
                     for (long i = 0; i < fsize; i++)
                     {
                         int c = fgetc(src);
@@ -159,22 +171,18 @@ int main(int argc, char *argv[])
                             fputc(c, dest);
                     }
                     fclose(dest);
-                    // Orijinal izinleri uygula
                     chmod(path, fmode);
                 }
             }
             token = strtok(NULL, "|");
         }
-
         free(header_data);
         fclose(src);
-        printf("Arşiv başarıyla açıldı.\n");
+        printf("%s dizininde dosyalar açıldı.\n", target_dir);
     }
-
     else
     {
         printf("Hatalı parametre!\n");
     }
-
     return 0;
 }
