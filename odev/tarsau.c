@@ -94,12 +94,83 @@ int main(int argc, char *argv[])
         fclose(out);
         printf("Dosyalar birleştirildi: %s\n", output_name);
     }
-    
+
     else if (strcmp(argv[1], "-a") == 0)
     {
-        // Açma (Extract) işlemleri buraya gelecek [cite: 22]
-        printf("Açma modu seçildi.\n");
+        if (argc < 3)
+        {
+            printf("Hata: Arşiv dosyası belirtilmedi!\n");
+            return 1;
+        }
+
+        char *archive_name = argv[2];
+        char *target_dir = (argc > 3) ? argv[3] : "."; // Dizin yoksa mevcut dizin [cite: 26]
+
+        FILE *src = fopen(archive_name, "r");
+        if (!src)
+        {
+            printf("Arşiv dosyası uygunsuz veya bozuk!\n"); // [cite: 25]
+            return 0;
+        }
+
+        // 1. Başlık boyutunu oku (İlk 10 bayt)
+        char size_buf[11] = {0};
+        if (fread(size_buf, 1, 10, src) < 10)
+        {
+            printf("Arşiv dosyası uygunsuz veya bozuk!\n");
+            fclose(src);
+            return 0;
+        }
+        long header_size = atol(size_buf);
+
+        // 2. Başlığı oku [cite: 33]
+        char *header_data = malloc(header_size - 10 + 1);
+        fread(header_data, 1, header_size - 10, src);
+        header_data[header_size - 10] = '\0';
+
+        // Hedef dizin kontrolü ve oluşturma
+        if (strcmp(target_dir, ".") != 0)
+        {
+            mkdir(target_dir, 0777);
+        }
+
+        // 3. Dosyaları geri oluştur [cite: 32]
+        char *token = strtok(header_data, "|");
+        while (token != NULL)
+        {
+            char fname[256];
+            unsigned int fmode;
+            long fsize;
+
+            // Formatı parçala: isim, izin, boyut [cite: 36]
+            if (sscanf(token, "%[^,],%o,%ld", fname, &fmode, &fsize) == 3)
+            {
+                char path[512];
+                sprintf(path, "%s/%s", target_dir, fname);
+
+                FILE *dest = fopen(path, "w");
+                if (dest)
+                {
+                    // Dosya içeriğini ASCII formatında oku ve yaz [cite: 39]
+                    for (long i = 0; i < fsize; i++)
+                    {
+                        int c = fgetc(src);
+                        if (c != EOF)
+                            fputc(c, dest);
+                    }
+                    fclose(dest);
+                    // Orijinal izinleri uygula
+                    chmod(path, fmode);
+                }
+            }
+            token = strtok(NULL, "|");
+        }
+
+        free(header_data);
+        fclose(src);
+        printf("Arşiv başarıyla açıldı.\n");
     }
+
     else
     {
         printf("Hatalı parametre!\n");
