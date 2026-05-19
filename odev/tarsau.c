@@ -59,7 +59,7 @@ int main(int argc, char *argv[])
                 // Girilen dosya sayısı sınırı aşıyor mu kontrol et
                 if (file_count >= MAX_FILES)
                 {
-                    printf("Hata: En fazla 32 giriş dosyası belirtilebilir!\n");
+                    printf("Hata: En fazla 32 giriş dosyası belirtilebilir\n");
                     return 1;
                 }
                 input_files[file_count++] = argv[i];
@@ -69,13 +69,13 @@ int main(int argc, char *argv[])
         // Hiç giriş dosyası verilmemişse işlemi durdur
         if (file_count == 0)
         {
-            printf("Hata: En az bir giriş dosyası belirtilmelidir!\n");
+            printf("Hata: En az bir giriş dosyası belirtilmelidir\n");
             return 1;
         }
 
         char header[10000] = ""; // Organizasyon (içerik) bilgilerini tutacak bellek alanı
 
-        // Giriş dosyalarının doğrulanması ve başlık (header) verisinin oluşturulması
+        // Giriş dosyalarının doğrulanması ve başlık  verisinin oluşturulması
         for (int i = 0; i < file_count; i++)
         {
             // İster: Yalnızca ASCII metin dosyaları kabul edilmelidir
